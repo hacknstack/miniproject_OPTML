@@ -1,0 +1,65 @@
+ideas for mini-project in OPT-ML
+
+We have to learn a data-set distributed amongs individuals, problem analysed (from the mini-project description):
+data is not iid in each individuals 
+
+using https://arxiv.org/pdf/1912.04977:
+
+(re)call Federated learning, 1 central server, n clients with their own data.
+
+ServerTrains(T):
+    init x_0
+    for round t=0,..,T-1:
+        S_t <- (random set of M clients)
+        for client i \in S_t :
+            x_(t+1)^i <- ClientUpdate(i,x_t)
+        x_(t+1) <- 1/M \sum(k=1)^M x_(t+1)^i 
+
+ClientUpdates(i,x):
+    for local steps j = 1,...,K:
+        x <- x - gamma gradient(f(x;z)) for z \sim P_i
+    return x
+
+(3.1)
+theres is several ways (often combined) to have deviation between different clients.
+Let's denote the client P_i,P_j for different clients i and j.
+P_i(x,y) being not iid P_j(x,y), is better understood with Bayes Theorem:
+    P(x,y) = P(y|x) P(x) = P(x|y) P(y)
+Thus the 4 cases are (examples are taken from a classification model on number recognition):
+
+    1: Feature distribution shift: P(x) varies across clients, but P(y|x) stays the same
+     (they write numbers differently)
+
+    2: Label distribution shift : P(y) varies across clients, but P(x|y) stays the same 
+    (people tend to write more 1s and 0s then other numbers)
+
+    3: Concept drift 1: P(x|y) varies across clients but P(y) stays the same:
+    (type example here!)
+
+    4: Concept drift 2: P(y|x) varies across clients but P(x) stays the same:
+    (people that write 4s like 9s, 5s like 3s, etc [I do that myself sorry])
+There's also a 5th way data can be thought as non-iid; when clients hold vastly different amounts of data.
+
+known strategies available:
+    
+    1: Optimizations algoritms (3.2.2)
+        many found convergence rates depending on the assumption on the non-iid and and function behavior.
+
+    2: Treating each contribution inequally:
+        The more the distribution varies from the norm, the less the contribution should be taken into account
+        (E.g: multiply by a priority constant, make the selection of clients to train on biased.)
+    
+
+
+My Proposition:
+    consider an implementation of Federated learning (for example fedAvg) on the mnist dataset,
+    We define the base performance on Federated learning with mini-batches GD and iid data distribution in participants.
+    How do the performance changes when there is:
+        - Feature distribution shift
+        - Label distribution shift
+    For each of them we can try solution where each clients is weighted by how much the distribution varies, many solutions:
+        - KL-divergence D(P||Q) = \sum_x P(x) log(P(x)/Q(x))
+        - Jensen-Shanon divergence (the symetric alternative) JSD(P||Q) = (D(P||Q)+D(Q||P))/2
+        - one final that is quite different from theses 2.
+    
+    
