@@ -1,3 +1,0 @@
-
-pip install syft
-pip install --upgrade --force-reinstall zstd
