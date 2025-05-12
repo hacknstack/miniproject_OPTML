@@ -34,10 +34,10 @@ Thus the 4 cases are (examples are taken from a classification model on number r
     (people tend to write more 1s and 0s then other numbers)
 
     3: Concept drift 1: P(x|y) varies across clients but P(y) stays the same:
-    (type example here!)
+    (same distribution of numbers but they're wrote very differently across users (cursive, no bar on 7, etc.) )
 
     4: Concept drift 2: P(y|x) varies across clients but P(x) stays the same:
-    (people that write 4s like 9s, 5s like 3s, etc [I do that myself sorry])
+    (the same ambiguous image might be recognized differently by different people (image between 4 and 9 or 1 and 7) )
 There's also a 5th way data can be thought as non-iid; when clients hold vastly different amounts of data.
 
 known strategies available:
@@ -51,7 +51,7 @@ known strategies available:
     
 
 
-My Proposition:
+Possible Proposition:
     consider an implementation of Federated learning (for example fedAvg) on the mnist dataset,
     We define the base performance on Federated learning with mini-batches GD and iid data distribution in participants.
     How do the performance changes when there is:
@@ -61,5 +61,19 @@ My Proposition:
         - KL-divergence D(P||Q) = \sum_x P(x) log(P(x)/Q(x))
         - Jensen-Shanon divergence (the symetric alternative) JSD(P||Q) = (D(P||Q)+D(Q||P))/2
         - one final that is quite different from theses 2.
-    
-    
+
+------------------------------------------------------------------------------------------------------
+
+Observation:
+    the EMNIST dataset has 4099 ~10^3 different authors.
+    240000 ~10^5, which means 60 ~10^2 numbers per author.
+
+For label distribution shift : (introduces in B. from https://arxiv.org/pdf/2102.02079)
+two different ways to model it:
+    -quantity-based:
+        each client has "only" k different labels (k<10) the k labels are choosen at random for each client
+    -distribution-based :
+        each client has a proportion of each label according to a Dirichlet distribution (for recall https://www.youtube.com/watch?v=_e0ugNro0Rc)
+        we sample p_k from Dir_10(beta)=[p0,...,p9] for each class, for more skewed distribution, make B ->0.
+
+For a more realistic and nuanced approach let's go for the distribution-based label distribution shift model!
