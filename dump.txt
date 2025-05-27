@@ -77,3 +77,8 @@ two different ways to model it:
         we sample p_k from Dir_10(beta)=[p0,...,p9] for each class, for more skewed distribution, make B ->0.
 
 For a more realistic and nuanced approach let's go for the distribution-based label distribution shift model!
+
+For Feature distribution shift: (introduces in C. from https://arxiv.org/pdf/2102.02079)
+There are multiple ways to aproach this problem. But in our case we already have a natural feature distribution shift, since each writer writes differently
+so we apply the Real world feature imbalance:
+    each client receives N_authors/N_clients random different writers
