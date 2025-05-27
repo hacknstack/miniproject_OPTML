@@ -81,4 +81,4 @@ For a more realistic and nuanced approach let's go for the distribution-based la
 For Feature distribution shift: (introduces in C. from https://arxiv.org/pdf/2102.02079)
 There are multiple ways to aproach this problem. But in our case we already have a natural feature distribution shift, since each writer writes differently
 so we apply the Real world feature imbalance:
-    each client receives k random different writers
+    each client receives N_authors/N_clients random different writers
