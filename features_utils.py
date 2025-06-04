@@ -9,7 +9,8 @@ from torch.distributions.bernoulli import Bernoulli
 import torch.nn.functional as F
 import torch.optim as optim
 import random
-def make_femnist_datasets(X,y,train, K=10, seed=42):
+
+def make_femnist_datasets(X, y, train, K=10, seed=42, sigma=0.1):
 
     # 1) Group example‐indices by writer
     by_writer = defaultdict(list)
@@ -26,10 +27,14 @@ def make_femnist_datasets(X,y,train, K=10, seed=42):
 
     # 3) for each group, collect X_i, y_i
     datalist = []
-    for group in groups:
+    for group_idx, group in enumerate(groups):
         idxs = [i for w in group for i in by_writer[w]]
         Xi = X[idxs]   # shape [n_i, ...]
         yi = y[idxs]   # shape [n_i,]
+        noise_std = (group_idx / float(K)) * sigma
+        noise = torch.randn_like(Xi) * noise_std
+        Xi_noisy = Xi + noise
+        Xi = torch.clamp(Xi_noisy, 0.0, 1.0)
         datalist.append((Xi, yi))
 
     return datalist
