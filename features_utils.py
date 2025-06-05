@@ -9,7 +9,7 @@ from torch.distributions.bernoulli import Bernoulli
 import torch.nn.functional as F
 import torch.optim as optim
 import random
-
+from utils import *
 def make_femnist_datasets(X, y, train, K=10, seed=42, sigma=0.1):
 
     # 1) Group example‐indices by writer
@@ -32,26 +32,67 @@ def make_femnist_datasets(X, y, train, K=10, seed=42, sigma=0.1):
         Xi = X[idxs]   # shape [n_i, ...]
         yi = y[idxs]   # shape [n_i,]
         noise_std = (group_idx / float(K)) * sigma
-        noise = torch.randn_like(Xi) * noise_std
+        noise = np.random.randn(*Xi.shape) * noise_std
         Xi_noisy = Xi + noise
-        Xi = torch.clamp(Xi_noisy, 0.0, 1.0)
+        Xi = np.clip(Xi_noisy, 0.0, 1.0)
         datalist.append((Xi, yi))
 
     return datalist
 
+class MaskedLinear(nn.Linear):
+    def __init__(self, in_features, out_features, mask, bias=True):
+        super(MaskedLinear, self).__init__(in_features, out_features, bias=bias)
+        # Register mask as a buffer so it's moved with the model
+        self.register_buffer('mask', mask)
+
+    def forward(self, x):
+        # Apply mask to weights before linear operation
+        return F.linear(x, self.weight * self.mask, self.bias)
+
 class MADE(nn.Module):
     def __init__(self, input_dim, hidden_dim):
         super(MADE, self).__init__()
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, input_dim)
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+
+        # 1) Create a random ordering of the input indices 1..D
+        # We'll assign each input feature a degree from 1..D
+        self.register_buffer('input_degrees', torch.randperm(input_dim) + 1)
+
+        # 2) Assign each hidden unit a random degree from 1..(D-1)
+        # Hidden degrees must be between 1 and D-1
+        hidden_degrees = np.random.randint(1, input_dim, size=hidden_dim)
+        self.register_buffer('hidden_degrees', torch.from_numpy(hidden_degrees))
+
+        # 3) Output degrees are fixed: for autoregressive order, we want output d to have degree = degree(input d)
+        # Actually, output d should be degree(d) = input degree of that feature
+        self.register_buffer('output_degrees', self.input_degrees)
+
+        # 4) Create masks for W1 (hidden x input) and W2 (output x hidden)
+        # mask1[k, j] = 1 if input_degree[j] > hidden_degree[k]
+        mask1 = (self.input_degrees.unsqueeze(0) > self.hidden_degrees.unsqueeze(1)).float()
+        # mask2[i, k] = 1 if hidden_degree[k] >= output_degree[i]
+        mask2 = (self.hidden_degrees.unsqueeze(0) >= self.output_degrees.unsqueeze(1)).float()
+
+        # Convert masks to same dtype as weights
+        mask1 = mask1.to(torch.float32)
+        mask2 = mask2.to(torch.float32)
+
+        # 5) Define masked linear layers
+        self.fc1 = MaskedLinear(input_dim, hidden_dim, mask1)
+        self.fc2 = MaskedLinear(hidden_dim, input_dim, mask2)
+
     def forward(self, x):
-        return torch.sigmoid(self.fc2(F.relu(self.fc1(x))))
+        # x: [batch_size, input_dim]
+        h = F.relu(self.fc1(x))
+        out = torch.sigmoid(self.fc2(h))
+        return out
 
 
 
 class WeightEstimator(nn.Module):
     """
-    Estimates the weight α(x) = P(l=1 | u) / (1 - P(l=1 | u))
+    Estimates the weight alpha(x) = P(l=1 | u) / (1 - P(l=1 | u))
     based on MADE log-likelihood vectors.
     """
     def __init__(self, input_dim, hidden_dim=100):
@@ -95,7 +136,7 @@ def compute_sample_weights(global_made, local_made, loader,
                            device='cpu', num_epochs=1, lr=1e-3):
     """
     Trains the WeightEstimator to distinguish global vs local MADE log-likelihoods
-    and computes sample weights α for all samples in loader.
+    and computes sample weights alpha for all samples in loader.
 
     Args:
         global_made, local_made: MADE models; their forward(x) returns logits for Bernoulli outputs.
@@ -105,7 +146,7 @@ def compute_sample_weights(global_made, local_made, loader,
         lr: learning rate.
 
     Returns:
-        Tensor of α weights for all samples in order.
+        Tensor of alpha weights for all samples in order.
     """
     # Determine input dimension
     sample_batch = next(iter(loader))[0].to(device)
@@ -147,3 +188,77 @@ def compute_sample_weights(global_made, local_made, loader,
             alphas.append((p / (1 - p)).cpu())
     return torch.cat(alphas)
 
+def gd_step(model, data, target, alpha, gamma):
+    # Compute weighted cross-entropy loss
+    model.train()
+    output = model(data)
+    # reduction='none' to get per-sample losses
+    loss_per_sample = F.cross_entropy(output, target, reduction='none')
+    # Multiply by alpha and take mean
+    weighted_loss = (alpha * loss_per_sample).mean()
+    weighted_loss.backward()
+    with torch.no_grad():
+        for param in model.parameters():
+            param -= gamma * param.grad
+    return model
+
+
+def client_update(model, data, target, alpha, K, gamma):
+    # Run exactly K gradient steps using sample weights alpha
+    for _ in range(K):
+        model = gd_step(model, data, target, alpha, gamma)
+    return model
+
+def fedavg_disk(datalist, alphas_list, client_sizes, T, K, gamma):
+    """
+    Perform FedAvg with data-size weighting and sample-weighted loss.
+
+    Args:
+      datalist: list of tuples (X_tensor, y_tensor) per client
+      alphas_list: list of alpha tensors (shape same as y_tensor) per client
+      client_sizes: list of int N_k for each client (length K)
+      T: number of communication rounds
+      K: number of local GD steps per client per round
+      gamma: learning rate for local updates
+
+    Returns:
+      global_model: trained global PyTorch model
+    """
+    n_clients = len(datalist)
+    total_samples = sum(client_sizes)
+    # Initialize global model
+    global_model = SimpleNN()
+    global_state = global_model.state_dict()
+
+    # Precompute weights N_k / N
+    weights = [Nk / total_samples for Nk in client_sizes]
+
+    for t in range(1, T + 1):
+        local_states = []
+        # Broadcast & local training
+        for i in range(n_clients):
+            client_model = SimpleNN()
+            client_model.load_state_dict(deepcopy(global_state))
+            X_i, y_i = datalist[i]
+            alpha_i = alphas_list[i]
+            # Ensure data on same device as model
+            X_i = torch.tensor(X_i, dtype=torch.float32)
+            y_i = torch.tensor(y_i, dtype=torch.long)
+                        # 3c) Clip & renormalize α to avoid extremely large weights
+            if not isinstance(alpha_i, torch.Tensor):
+                alpha_i = torch.tensor(alpha_i, dtype=torch.float32)
+            alpha_i = torch.clamp(alpha_i, max=10.0)         # clip step
+            alpha_i = alpha_i * (len(alpha_i) / alpha_i.sum())         # now sum(alpha_i)== N_k
+            # Perform K local steps
+            updated_model = client_update(client_model, X_i, y_i, alpha_i, K, gamma)
+            local_states.append(deepcopy(updated_model.state_dict()))
+
+        # Aggregate weighted by client_sizes
+        new_global_state = deepcopy(global_state)
+        for key in global_state.keys():
+            # Weighted sum of parameters
+            new_global_state[key] = sum(weights[i] * local_states[i][key] for i in range(n_clients))
+        global_state = new_global_state
+        global_model.load_state_dict(global_state)
+
+    return global_model
