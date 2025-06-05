@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import random
 from utils import *
-def make_femnist_datasets(X, y, train, K=10, seed=42, sigma=0.1):
+def make_femnist_datasets(X, y, train, K=10, seed=42, sigma=0.5):
 
     # 1) Group example‐indices by writer
     by_writer = defaultdict(list)
@@ -187,6 +187,22 @@ def compute_sample_weights(global_made, local_made, loader,
             p = estimator(ul)
             alphas.append((p / (1 - p)).cpu())
     return torch.cat(alphas)
+class SimpleNN(nn.Module):
+    def __init__(self):
+        super(SimpleNN, self).__init__()
+        self.fc1 = nn.Linear(28 * 28, 200)
+        self.fc2 = nn.Linear(200, 10)
+    
+    def forward(self, x):
+        x = x.view(-1, 28 * 28)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+    
+    def get_representation(self,x):
+        x = x.view(-1, 28 * 28)
+        x = F.relu(self.fc1(x))
+        return x
 
 def gd_step(model, data, target, alpha, gamma):
     # Compute weighted cross-entropy loss
