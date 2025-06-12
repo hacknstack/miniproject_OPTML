@@ -10,6 +10,12 @@ import torch.nn.functional as F
 import torch.optim as optim
 import random
 from utils import *
+
+def noise_adder(Xi,noise_std):
+    noise = np.random.randn(*Xi.shape) * noise_std
+    Xi_noisy = Xi + noise
+    return np.clip(Xi_noisy, 0.0, 1.0)
+
 def make_femnist_datasets(X, y, train, K=10, seed=42, sigma=0.5):
 
     # 1) Group example‐indices by writer
@@ -32,9 +38,7 @@ def make_femnist_datasets(X, y, train, K=10, seed=42, sigma=0.5):
         Xi = X[idxs]   # shape [n_i, ...]
         yi = y[idxs]   # shape [n_i,]
         noise_std = (group_idx / float(K)) * sigma
-        noise = np.random.randn(*Xi.shape) * noise_std
-        Xi_noisy = Xi + noise
-        Xi = np.clip(Xi_noisy, 0.0, 1.0)
+        Xi = noise_adder(Xi,noise_std)
         datalist.append((Xi, yi))
 
     return datalist
@@ -187,22 +191,6 @@ def compute_sample_weights(global_made, local_made, loader,
             p = estimator(ul)
             alphas.append((p / (1 - p)).cpu())
     return torch.cat(alphas)
-class SimpleNN(nn.Module):
-    def __init__(self):
-        super(SimpleNN, self).__init__()
-        self.fc1 = nn.Linear(28 * 28, 200)
-        self.fc2 = nn.Linear(200, 10)
-    
-    def forward(self, x):
-        x = x.view(-1, 28 * 28)
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
-    
-    def get_representation(self,x):
-        x = x.view(-1, 28 * 28)
-        x = F.relu(self.fc1(x))
-        return x
 
 def gd_step(model, data, target, alpha, gamma):
     # Compute weighted cross-entropy loss
@@ -245,12 +233,15 @@ def fedavg_disk(datalist, alphas_list, client_sizes, T, K, gamma):
     # Initialize global model
     global_model = SimpleNN()
     global_state = global_model.state_dict()
+    #logging the loss
+    loss_curve = []
 
     # Precompute weights N_k / N
     weights = [Nk / total_samples for Nk in client_sizes]
 
-    for t in range(1, T + 1):
+    for t in range(T):  #global rounds
         local_states = []
+        client_losses = []
         # Broadcast & local training
         for i in range(n_clients):
             client_model = SimpleNN()
@@ -269,12 +260,23 @@ def fedavg_disk(datalist, alphas_list, client_sizes, T, K, gamma):
             updated_model = client_update(client_model, X_i, y_i, alpha_i, K, gamma)
             local_states.append(deepcopy(updated_model.state_dict()))
 
+                        # evaluate training loss on this client's data
+            loss_i = evaluate_loss(client_model, X_i, y_i,alpha_i)
+            client_losses.append(loss_i)
+            local_states.append(deepcopy(client_model.state_dict()))
+
         # Aggregate weighted by client_sizes
         new_global_state = deepcopy(global_state)
+
+        #log the average training loss this round
+        # log the weighted training loss this round
+        avg_loss = sum(weights[i] * client_losses[i] for i in range(n_clients))
+        loss_curve.append(avg_loss)
+
         for key in global_state.keys():
             # Weighted sum of parameters
             new_global_state[key] = sum(weights[i] * local_states[i][key] for i in range(n_clients))
         global_state = new_global_state
-        global_model.load_state_dict(global_state)
-
-    return global_model
+    
+    global_model.load_state_dict(global_state)
+    return global_model, loss_curve
