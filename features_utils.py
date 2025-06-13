@@ -43,6 +43,38 @@ def make_femnist_datasets(X, y, train, K=10, seed=42, sigma=0.5):
 
     return datalist
 
+def evaluate_loss(model, X, y, alpha=None):
+    """Mean cross‑entropy loss on (X,y)."""
+    model.eval()
+    with torch.no_grad():
+        logits = model(X)
+        if(alpha == None):
+            return F.cross_entropy(
+                logits,
+                y,
+                reduction='mean'
+            ).item()
+        per_sample = F.cross_entropy(logits, y, reduction='none')
+        # weighted sum then normalize
+        return (per_sample * alpha).sum().item() / alpha.sum().item()
+
+class SimpleNN(nn.Module):
+    def __init__(self):
+        super().__init__() 
+        self.fc1 = nn.Linear(28 * 28, 200)
+        self.fc2 = nn.Linear(200, 10)
+    
+    def forward(self, x):
+        x = x.view(-1, 28 * 28)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+    
+    def get_representation(self,x):
+        x = x.view(-1, 28 * 28)
+        x = F.relu(self.fc1(x))
+        return x
+
 class MaskedLinear(nn.Linear):
     def __init__(self, in_features, out_features, mask, bias=True):
         super(MaskedLinear, self).__init__(in_features, out_features, bias=bias)
