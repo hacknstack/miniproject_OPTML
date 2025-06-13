@@ -8,7 +8,7 @@ from labels_utils import moon_contrastive_loss
 
 class SimpleNN(nn.Module):
     def __init__(self):
-        super(SimpleNN, self).__init__()
+        super().__init__() 
         self.fc1 = nn.Linear(28 * 28, 200)
         self.fc2 = nn.Linear(200, 10)
     
