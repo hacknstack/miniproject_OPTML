@@ -8,7 +8,7 @@ from labels_utils import moon_contrastive_loss
 
 class SimpleNN(nn.Module):
     def __init__(self):
-        super(SimpleNN, self).__init__()
+        super().__init__() 
         self.fc1 = nn.Linear(28 * 28, 200)
         self.fc2 = nn.Linear(200, 10)
     
@@ -177,16 +177,20 @@ def evaluate(model, X_test, y_test):
 
 #Similar but with loss log, to obtain convergence rates
 
-def evaluate_loss(model, X, y):
+def evaluate_loss(model, X, y, alpha=None):
     """Mean cross‑entropy loss on (X,y)."""
     model.eval()
     with torch.no_grad():
-        logits = model(torch.tensor(X, dtype=torch.float32))
-        return F.cross_entropy(
-            logits,
-            torch.tensor(y, dtype=torch.long),
-            reduction='mean'
-        ).item()
+        logits = model(X)
+        if(alpha == None):
+            return F.cross_entropy(
+                logits,
+                y,
+                reduction='mean'
+            ).item()
+        per_sample = F.cross_entropy(logits, y, reduction='none')
+        # weighted sum then normalize
+        return (per_sample * alpha).sum().item() / alpha.sum().item()
 
 
 
@@ -219,7 +223,7 @@ def fedavg_loss(datalist, T, K, gamma, print_every=None, weights=None) :
             client_model = client_update(client_model, X_tensor, y_tensor, K, gamma)
 
             # evaluate training loss on this client's data
-            loss_i = evaluate_loss(client_model, X, y)
+            loss_i = evaluate_loss(client_model, X_tensor, y_tensor)
             client_losses.append(loss_i)
             local_states.append(deepcopy(client_model.state_dict()))
 
