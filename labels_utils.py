@@ -1,6 +1,36 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+import numpy as np
+
+def create_quantity_imbalanced_clients(X, y, n, k):
+    num_classes = len(np.unique(y))
+    class_indices = {i: np.where(y == i)[0].tolist() for i in range(num_classes)}
+    for indices in class_indices.values():
+        np.random.shuffle(indices)
+
+    client_data_indices = [[] for _ in range(n)]
+    assigned_classes_per_client = []
+
+    # Assign k random unique classes to each client
+    for _ in range(n):
+        assigned_classes = np.random.choice(num_classes, k, replace=False)
+        assigned_classes_per_client.append(assigned_classes)
+
+    # Distribute data
+    for client_id, class_list in enumerate(assigned_classes_per_client):
+        # Determine the minimum number of samples available across selected classes
+        min_samples_per_class = min(len(class_indices[cls]) for cls in class_list)
+        samples_per_class = min_samples_per_class
+
+        for cls in class_list:
+            selected_indices = class_indices[cls][:samples_per_class]
+            client_data_indices[client_id].extend(selected_indices)
+            class_indices[cls] = class_indices[cls][samples_per_class:]  # remove used samples
+
+    datalist = [(X[indices], y[indices]) for indices in client_data_indices]
+    return datalist
+
 
 def create_dirichlet_clients(X, y, n, beta):
     num_classes = 10
