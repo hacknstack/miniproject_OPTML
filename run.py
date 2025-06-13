@@ -29,8 +29,8 @@ def run_notebooks(notebooks, timeout=None, kernel=None):
 
 if __name__ == "__main__":
     notebooks_to_run = [
-        "feature_shift.ipynb",
-        "label_shift.ipynb"
+        "features_shift.ipynb",
+        "LabelShift.ipynb"
     ]
     # you can adjust timeout or kernel as needed:
     run_notebooks(notebooks_to_run, timeout=600, kernel="python3")
