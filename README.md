@@ -44,6 +44,12 @@ The directory structure of our data for this project is the following:
 ├── features_shift.ipynb <- Notebook related to Results - Feature Distribution Shift
 │
 ├── LabelShift.ipynb <- Notebook related to Results - Feature Distribution Shift
+│
+├── features_utils.py <- All functions related to Feature Distribution Shift
+│
+├── labels_utils.py <- All functions related to Label Distribution Shift
+│
+├── utils.py <- helpers functions
 ```
 ## Results
 
