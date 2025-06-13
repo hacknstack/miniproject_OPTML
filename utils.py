@@ -79,7 +79,7 @@ def fedavg(datalist, T, K, gamma, weights = None):
     global_model_state = deepcopy(global_model.state_dict())
 
     for t in range(T):
-        print("round : ", t+1)
+        #print("round : ", t+1)
         local_states = []
 
         for i in range(n):
